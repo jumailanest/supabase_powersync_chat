@@ -90,7 +90,6 @@ class SupabaseConnector extends PowerSyncBackendConnector {
     try {
       for (var op in transaction.crud) {
         final table = rest.from(op.table);
-
         if (op.op == UpdateType.put) {
           var data = Map<String, dynamic>.of(op.opData!);
           data['id'] = op.id;
