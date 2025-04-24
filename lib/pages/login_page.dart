@@ -1,20 +1,22 @@
+// ignore_for_file: use_build_context_synchronously
+
 import 'package:flutter/material.dart';
 import './chat_page.dart';
 import '../utils/constants.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class LoginPage extends StatefulWidget {
-  const LoginPage({Key? key}) : super(key: key);
+  const LoginPage({super.key});
 
   static Route<void> route() {
     return MaterialPageRoute(builder: (context) => const LoginPage());
   }
 
   @override
-  _LoginPageState createState() => _LoginPageState();
+  LoginPageState createState() => LoginPageState();
 }
 
-class _LoginPageState extends State<LoginPage> {
+class LoginPageState extends State<LoginPage> {
   bool _isLoading = false;
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
@@ -35,7 +37,7 @@ class _LoginPageState extends State<LoginPage> {
     } catch (_) {
       context.showErrorSnackBar(message: unexpectedErrorMessage);
     }
-    if (mounted) {
+    if (context.mounted) {
       setState(() {
         _isLoading = true;
       });

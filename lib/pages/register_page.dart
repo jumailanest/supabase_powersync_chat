@@ -1,3 +1,5 @@
+// ignore_for_file: use_build_context_synchronously
+
 import 'package:flutter/material.dart';
 import './chat_page.dart';
 import './login_page.dart';
@@ -5,7 +7,7 @@ import '../utils/constants.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class RegisterPage extends StatefulWidget {
-  const RegisterPage({Key? key, required this.isRegistering}) : super(key: key);
+  const RegisterPage({super.key, required this.isRegistering});
 
   static Route<void> route({bool isRegistering = false}) {
     return MaterialPageRoute(

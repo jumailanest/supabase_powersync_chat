@@ -6,7 +6,7 @@ final supabase = Supabase.instance.client;
 
 /// Simple preloader inside a Center widget
 const preloader =
-    Center(child: CircularProgressIndicator(color: Colors.orange));
+Center(child: CircularProgressIndicator(color: Colors.orange));
 
 /// Simple sized box to space out form elements
 const formSpacer = SizedBox(width: 16, height: 16);

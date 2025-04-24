@@ -17,7 +17,7 @@ Future<void> logout() async {
 ///
 /// Displays chat bubbles as a ListView and TextField to enter new chat.
 class ChatPage extends StatefulWidget {
-  const ChatPage({Key? key}) : super(key: key);
+  const ChatPage({super.key});
 
   static Route<void> route() {
     return MaterialPageRoute(
@@ -36,13 +36,7 @@ class _ChatPageState extends State<ChatPage> {
   @override
   void initState() {
     final myUserId = supabase.auth.currentUser!.id;
-    _messagesStream = supabase
-        .from('messages')
-        .stream(primaryKey: ['id'])
-        .order('created_at')
-        .map((maps) => maps
-            .map((map) => Message.fromMap(map: map, myUserId: myUserId))
-            .toList());
+    _messagesStream = Message.watchMessages(myUserId);
     super.initState();
   }
 
@@ -50,9 +44,7 @@ class _ChatPageState extends State<ChatPage> {
     if (_profileCache[profileId] != null) {
       return;
     }
-    final data =
-        await supabase.from('profiles').select().eq('id', profileId).single();
-    final profile = Profile.fromMap(data);
+    final profile = await Profile.findProfileById(profileId);
     setState(() {
       _profileCache[profileId] = profile;
     });
@@ -72,25 +64,25 @@ class _ChatPageState extends State<ChatPage> {
                 Expanded(
                   child: messages.isEmpty
                       ? const Center(
-                          child: Text('Start your conversation now :)'),
-                        )
+                    child: Text('Start your conversation now :)'),
+                  )
                       : ListView.builder(
-                          reverse: true,
-                          itemCount: messages.length,
-                          itemBuilder: (context, index) {
-                            final message = messages[index];
+                    reverse: true,
+                    itemCount: messages.length,
+                    itemBuilder: (context, index) {
+                      final message = messages[index];
 
-                            /// I know it's not good to include code that is not related
-                            /// to rendering the widget inside build method, but for
-                            /// creating an app quick and dirty, it's fine 😂
-                            _loadProfileCache(message.profileId);
+                      /// I know it's not good to include code that is not related
+                      /// to rendering the widget inside build method, but for
+                      /// creating an app quick and dirty, it's fine 😂
+                      _loadProfileCache(message.profileId);
 
-                            return _ChatBubble(
-                              message: message,
-                              profile: _profileCache[message.profileId],
-                            );
-                          },
-                        ),
+                      return _ChatBubble(
+                        message: message,
+                        profile: _profileCache[message.profileId],
+                      );
+                    },
+                  ),
                 ),
                 const _MessageBar(),
               ],
@@ -122,7 +114,7 @@ class _ChatPageState extends State<ChatPage> {
                 await logout();
 
                 navigator.pushReplacement(MaterialPageRoute(
-                  builder: (context) => SplashPage(),
+                  builder: (context) => const SplashPage(),
                 ));
               },
             ),
@@ -135,9 +127,7 @@ class _ChatPageState extends State<ChatPage> {
 
 /// Set of widget that contains TextField and Button to submit message
 class _MessageBar extends StatefulWidget {
-  const _MessageBar({
-    Key? key,
-  }) : super(key: key);
+  const _MessageBar();
 
   @override
   State<_MessageBar> createState() => _MessageBarState();
@@ -199,25 +189,15 @@ class _MessageBarState extends State<_MessageBar> {
       return;
     }
     _textController.clear();
-    try {
-      await supabase.from('messages').insert({
-        'profile_id': myUserId,
-        'content': text,
-      });
-    } on PostgrestException catch (error) {
-      context.showErrorSnackBar(message: error.message);
-    } catch (_) {
-      context.showErrorSnackBar(message: unexpectedErrorMessage);
-    }
+    await Message.create(myUserId, text);
   }
 }
 
 class _ChatBubble extends StatelessWidget {
   const _ChatBubble({
-    Key? key,
     required this.message,
     required this.profile,
-  }) : super(key: key);
+  });
 
   final Message message;
   final Profile? profile;
@@ -258,7 +238,7 @@ class _ChatBubble extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 18),
       child: Row(
         mainAxisAlignment:
-            message.isMine ? MainAxisAlignment.end : MainAxisAlignment.start,
+        message.isMine ? MainAxisAlignment.end : MainAxisAlignment.start,
         children: chatContents,
       ),
     );
