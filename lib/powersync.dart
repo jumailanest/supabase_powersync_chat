@@ -43,14 +43,14 @@ Future<void> openDatabase() async {
   db = PowerSyncDatabase(schema: schema, path: await getDatabasePath());
   await db.initialize();
 
-  // await dotenv.load(fileName: '.env');
+   await dotenv.load(fileName: '.env');
   //
-  // await Supabase.initialize(
-  //   url: dotenv.env['SUPABASE_URL']!,
-  //   anonKey: dotenv.env['SUPABASE_ANON_KEY']!,
-  // );
+  await Supabase.initialize(
+    url: dotenv.env['SUPABASE_URL']!,
+    anonKey: dotenv.env['SUPABASE_ANON_KEY']!,
+  );
 
-  await loadSupabase();
+ // await loadSupabase();
 
   SupabaseConnector? currentConnector;
 
