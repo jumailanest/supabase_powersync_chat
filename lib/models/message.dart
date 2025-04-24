@@ -1,6 +1,12 @@
 import '../powersync.dart';
 import 'package:powersync/sqlite3_common.dart' as sqlite;
 
+enum MessageStatus {
+  pending,
+  sent,
+  delivered
+}
+
 class Message {
   Message({
     required this.id,
@@ -8,24 +14,18 @@ class Message {
     required this.content,
     required this.createdAt,
     required this.isMine,
+    required this.status,
   });
 
-  /// ID of the message
   final String id;
-
-  /// ID of the user who posted the message
   final String profileId;
-
-  /// Text content of the message
   final String content;
-
-  /// Date and time when the message was created
   final DateTime createdAt;
-
-  /// Whether the message is sent by the user or not.
   final bool isMine;
+  final MessageStatus status;
 
-  Message.fromMap({
+  // Modified constructor
+  Message.fromMap(this.status, {
     required Map<String, dynamic> map,
     required String myUserId,
   })  : id = map['id'],
@@ -34,13 +34,21 @@ class Message {
         createdAt = DateTime.parse(map['created_at']),
         isMine = myUserId == map['profile_id'];
 
+  // Modified factory to handle MessageStatus
   factory Message.fromRow(sqlite.Row row, String myUserId) {
+    final statusString = row['status']; // Assuming status is stored as a string in the database
+    final status = MessageStatus.values.firstWhere(
+          (e) => e.toString() == 'MessageStatus.$statusString',
+      orElse: () => MessageStatus.sent, // Default to sent if status is invalid
+    );
     return Message(
-        id: row['id'],
-        profileId: row['profile_id'],
-        content: row['content'],
-        createdAt: DateTime.parse(row['created_at']),
-        isMine: myUserId == row['profile_id']);
+      id: row['id'],
+      profileId: row['profile_id'],
+      content: row['content'],
+      createdAt: DateTime.parse(row['created_at']),
+      isMine: myUserId == row['profile_id'],
+      status: status,
+    );
   }
 
   static Stream<List<Message>> watchMessages(String myUserId) {
@@ -55,7 +63,14 @@ class Message {
 
   static Future<void> create(String profileId, String content) async {
     await db.execute(
-        'INSERT INTO messages(id, created_at, profile_id, content) VALUES(uuid(), datetime(), ?, ?)',
-        [profileId, content]);
+        'INSERT INTO messages(id, created_at, profile_id, content, status) VALUES(uuid(), datetime(), ?, ?, ?)',
+        [profileId, content, MessageStatus.sent.toString().split('.').last]); // Set default status to 'sent'
+  }
+
+  // A method to update the message status (delivered)
+  static Future<void> updateStatus(String messageId, MessageStatus status) async {
+    await db.execute(
+        'UPDATE messages SET status = ? WHERE id = ?',
+        [status.toString().split('.').last, messageId]);
   }
 }

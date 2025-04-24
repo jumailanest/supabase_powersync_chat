@@ -1,15 +1,18 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:timeago/timeago.dart';
 
 import '../models/message.dart';
 import '../models/profile.dart';
 import '../utils/constants.dart';
 import './splash_page.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:timeago/timeago.dart';
 
 Future<void> logout() async {
+  final channel = supabase.channel('presence');
+  await channel.untrack(); // Stop tracking presence
+  await channel.unsubscribe(); // Unsubscribe from the channel
   await Supabase.instance.client.auth.signOut();
 }
 
@@ -17,11 +20,13 @@ Future<void> logout() async {
 ///
 /// Displays chat bubbles as a ListView and TextField to enter new chat.
 class ChatPage extends StatefulWidget {
-  const ChatPage({super.key});
+  const ChatPage({super.key, required this.senderId});
 
-  static Route<void> route() {
+  final String senderId; // Sender ID as a string (UUID)
+
+  static Route<void> route({required String senderId}) {
     return MaterialPageRoute(
-      builder: (context) => const ChatPage(),
+      builder: (context) => ChatPage(senderId: senderId),
     );
   }
 
@@ -31,14 +36,54 @@ class ChatPage extends StatefulWidget {
 
 class _ChatPageState extends State<ChatPage> {
   late final Stream<List<Message>> _messagesStream;
+  late final Stream<bool> _senderStatusStream; // Stream for sender's online status
   final Map<String, Profile> _profileCache = {};
 
   @override
   void initState() {
     final myUserId = supabase.auth.currentUser!.id;
+    print("myUserId...$myUserId");
+    print("senderId...${widget.senderId}");
+
+    // Assuming the user ID is a numeric string and converting it to an integer
+    final myUserIdInt = int.tryParse(myUserId) ?? 0; // Default to 0 if parsing fails
+
     _messagesStream = Message.watchMessages(myUserId);
+
+    // Initialize the sender's presence stream
+    _senderStatusStream = _watchSenderStatus(myUserIdInt);
+
+    // Track the current user's presence
+    _trackUserPresence(myUserIdInt);
+
     super.initState();
   }
+
+
+  void _trackUserPresence(int userId) {
+    final channel = supabase.channel('presence');
+    channel.subscribe((status, [error]) {
+      if (status == 'SUBSCRIBED') {
+        channel.track({'user_id': userId});
+      }
+    });
+  }
+
+  Stream<bool> _watchSenderStatus(int senderId) {
+    final channel = supabase.channel('presence');
+    final streamController = StreamController<bool>.broadcast();
+    channel.onPresenceSync((payload) {
+      final presenceState = channel.presenceState();
+      final isOnline = presenceState[senderId] != null;
+      streamController.add(isOnline);
+    }).subscribe();
+    streamController.onCancel = () {
+      channel.unsubscribe();
+      streamController.close();
+    };
+    return streamController.stream.distinct(); // Only emit unique updates
+  }
+
 
   Future<void> _loadProfileCache(String profileId) async {
     if (_profileCache[profileId] != null) {
@@ -53,7 +98,36 @@ class _ChatPageState extends State<ChatPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Chat')),
+      appBar: AppBar(
+        title: StreamBuilder<bool>(
+          stream: _senderStatusStream,
+          builder: (context, snapshot) {
+            String statusText;
+            Color statusColor;
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              statusText = 'Loading...';
+              statusColor = Colors.grey;
+            } else {
+              final isOnline = snapshot.data ?? false;
+              statusText = isOnline ? 'Online' : 'Offline';
+              statusColor = isOnline ? Colors.green : Colors.red;
+            }
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Chat'),
+                Text(
+                  statusText,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: statusColor,
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+      ),
       body: StreamBuilder<List<Message>>(
         stream: _messagesStream,
         builder: (context, snapshot) {
@@ -93,11 +167,7 @@ class _ChatPageState extends State<ChatPage> {
         },
       ),
       drawer: Drawer(
-        // Add a ListView to the drawer. This ensures the user can scroll
-        // through the options in the drawer if there isn't enough vertical
-        // space to fit everything.
         child: ListView(
-          // Important: Remove any padding from the ListView.
           padding: EdgeInsets.zero,
           children: [
             const DrawerHeader(
@@ -112,7 +182,6 @@ class _ChatPageState extends State<ChatPage> {
                 var navigator = Navigator.of(context);
                 navigator.pop();
                 await logout();
-
                 navigator.pushReplacement(MaterialPageRoute(
                   builder: (context) => const SplashPage(),
                 ));
@@ -122,6 +191,13 @@ class _ChatPageState extends State<ChatPage> {
         ),
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    // Unsubscribe from the presence channel to avoid memory leaks
+    supabase.channel('presence').unsubscribe();
+    super.dispose();
   }
 }
 
@@ -230,6 +306,20 @@ class _ChatBubble extends StatelessWidget {
       const SizedBox(width: 12),
       Text(format(message.createdAt, locale: 'en_short')),
       const SizedBox(width: 60),
+
+      if (message.isMine)
+        Icon(
+          message.status == MessageStatus.pending
+              ? Icons.access_time // Clock icon for pending
+              : message.status == MessageStatus.sent
+              ? Icons.check // Single check for sent
+              : Icons.done_all, // Double check for delivered
+          size: 16,
+          color: message.status == MessageStatus.delivered
+              ? Colors.green // Green for delivered
+              : Colors.grey, // Grey for pending and sent
+        ),
+
     ];
     if (message.isMine) {
       chatContents = chatContents.reversed.toList();

@@ -81,6 +81,7 @@ class SupabaseConnector extends PowerSyncBackendConnector {
     log.info('uploading data...');
     final transaction = await database.getNextCrudTransaction();
     if (transaction == null) {
+
       return;
     }
 
@@ -89,19 +90,52 @@ class SupabaseConnector extends PowerSyncBackendConnector {
     try {
       for (var op in transaction.crud) {
         final table = rest.from(op.table);
+
         if (op.op == UpdateType.put) {
           var data = Map<String, dynamic>.of(op.opData!);
           data['id'] = op.id;
           await table.upsert(data);
+
+          // ✅ mark as sent after successful upsert
+          if (op.table == 'messages') {
+            await rest.from('messages').update({
+              'status': 'sent',
+            }).eq('id', op.id);
+          }
+
         } else if (op.op == UpdateType.patch) {
           await table.update(op.opData!).eq('id', op.id);
+
+          // ✅ mark as sent after successful upsert
+          if (op.table == 'messages') {
+            await rest.from('messages').update({
+              'status': 'sent',
+            }).eq('id', op.id);
+          }
+
         } else if (op.op == UpdateType.delete) {
           await table.delete().eq('id', op.id);
         }
       }
 
       await transaction.complete();
+      for (var op in transaction.crud) {
+        if (op.table == 'messages' && op.op != UpdateType.delete) {
+          await rest.from('messages').update({
+            'status': 'delivered',
+          }).eq('id', op.id);
+        }
+      }
+
     } on PostgrestException catch (e) {
+
+      for (var op in transaction.crud) {
+        if (op.table == 'messages' && op.op != UpdateType.delete) {
+          await rest.from('messages').update({
+            'status': 'pending',
+          }).eq('id', op.id);
+        }
+      }
       if (e.code != null &&
           fatalResponseCodes.any((re) => re.hasMatch(e.code!))) {
         await transaction.complete();
@@ -116,6 +150,7 @@ class SupabaseConnector extends PowerSyncBackendConnector {
     final session = Supabase.instance.client.auth.currentSession;
 
     if (session == null) {
+
       // not logged in
       return null;
     }

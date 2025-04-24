@@ -29,8 +29,11 @@ class SplashPageState extends State<SplashPage> {
       Navigator.of(context)
           .pushAndRemoveUntil(RegisterPage.route(), (route) => false);
     } else {
-      Navigator.of(context)
-          .pushAndRemoveUntil(ChatPage.route(), (route) => false);
+      final userId = supabase.auth.currentUser!.id; // Get the current user's ID
+      Navigator.of(context).pushAndRemoveUntil(
+        ChatPage.route(senderId: userId), // Pass the user's ID as senderId
+            (route) => false,
+      );
     }
   }
 

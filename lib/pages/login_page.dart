@@ -26,12 +26,15 @@ class LoginPageState extends State<LoginPage> {
       _isLoading = true;
     });
     try {
-      await supabase.auth.signInWithPassword(
+      final response = await supabase.auth.signInWithPassword(
         email: _emailController.text,
         password: _passwordController.text,
       );
-      Navigator.of(context)
-          .pushAndRemoveUntil(ChatPage.route(), (route) => false);
+      final userId = response.user!.id; // Get the current user's ID
+      Navigator.of(context).pushAndRemoveUntil(
+        ChatPage.route(senderId: userId), // Pass the current user's ID
+            (route) => false,
+      );
     } on AuthException catch (error) {
       context.showErrorSnackBar(message: error.message);
     } catch (_) {
@@ -39,7 +42,7 @@ class LoginPageState extends State<LoginPage> {
     }
     if (context.mounted) {
       setState(() {
-        _isLoading = true;
+        _isLoading = false; // Fix: Set _isLoading to false after completion
       });
     }
   }
