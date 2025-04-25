@@ -37,9 +37,13 @@ class ChatPage extends StatefulWidget {
 
 class _ChatPageState extends State<ChatPage> {
   late final Stream<List<Message>> _messagesStream;
-  late final Stream<bool> _senderStatusStream; // Stream for sender's online status
+
   final Map<String, Profile> _profileCache = {};
 
+
+  late final Stream<bool> _senderStatusStream;
+  StreamController<bool>? _statusStreamController;
+  Timer? _statusCheckTimer;
 
 
   @override
@@ -53,14 +57,36 @@ class _ChatPageState extends State<ChatPage> {
 
     _messagesStream = Message.watchMessages(myUserId);
 
-    // Initialize the sender's presence stream
-    _senderStatusStream = _watchSenderStatus(myUserIdInt);
 
-    // Track the current user's presence
-    _trackUserPresence(myUserIdInt);
+    _statusStreamController = StreamController<bool>.broadcast();
+    _senderStatusStream = _statusStreamController!.stream;
+    _startStatusCheck();
+
+
+    // Initialize the sender's presence stream
+    // _senderStatusStream = _watchSenderStatus(myUserIdInt);
+    //
+    // // Track the current user's presence
+    // _trackUserPresence(myUserIdInt);
 
     super.initState();
   }
+
+
+  void _startStatusCheck() {
+    // Check immediately
+    _checkAndEmitStatus();
+    // Then start periodic checking
+    _statusCheckTimer = Timer.periodic(Duration(seconds: 5), (_) {
+      _checkAndEmitStatus();
+    });
+  }
+
+  Future<void> _checkAndEmitStatus() async {
+    final online = await _isOnline();
+    _statusStreamController?.add(online);
+  }
+
 
   Future<bool> _isOnline() async {
     final connectivityResults = await Connectivity().checkConnectivity();
@@ -70,6 +96,14 @@ class _ChatPageState extends State<ChatPage> {
         result == ConnectivityResult.mobile ||
         result == ConnectivityResult.ethernet ||
         result == ConnectivityResult.vpn);
+  }
+
+  @override
+  void dispose() {
+    _statusCheckTimer?.cancel();
+    _statusStreamController?.close();
+    supabase.channel('presence').unsubscribe();
+    super.dispose();
   }
 
 
@@ -206,12 +240,12 @@ class _ChatPageState extends State<ChatPage> {
     );
   }
 
-  @override
-  void dispose() {
-    // Unsubscribe from the presence channel to avoid memory leaks
-    supabase.channel('presence').unsubscribe();
-    super.dispose();
-  }
+  // @override
+  // void dispose() {
+  //   // Unsubscribe from the presence channel to avoid memory leaks
+  //   supabase.channel('presence').unsubscribe();
+  //   super.dispose();
+  // }
 }
 
 /// Set of widget that contains TextField and Button to submit message
@@ -312,62 +346,145 @@ class _ChatBubble extends StatelessWidget {
   final Profile? profile;
 
 
-
-
-
   @override
   Widget build(BuildContext context) {
-    List<Widget> chatContents = [
-      if (!message.isMine)
-        CircleAvatar(
-          child: profile == null
-              ? preloader
-              : Text(profile!.username.substring(0, 2)),
-        ),
-      const SizedBox(width: 12),
-      Flexible(
-        child: Container(
-          padding: const EdgeInsets.symmetric(
-            vertical: 8,
-            horizontal: 12,
-          ),
-          decoration: BoxDecoration(
-            color: message.isMine
-                ? Theme.of(context).primaryColor
-                : Colors.grey[300],
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Text(message.content),
-        ),
-      ),
-      const SizedBox(width: 12),
-      Text(format(message.createdAt, locale: 'en_short')),
-      const SizedBox(width: 60),
+    final isMine = message.isMine;
 
-      if (message.isMine)
-        Icon(
-          message.status == MessageStatus.pending
-              ? Icons.access_time // Clock icon for pending
-              : message.status == MessageStatus.sent
-              ? Icons.check // Single check for sent
-              : Icons.done_all, // Double check for delivered
-          size: 16,
-          color: message.status == MessageStatus.delivered
-              ? Colors.green // Green for delivered
-              : Colors.grey, // Grey for pending and sent
-        ),
-
-    ];
-    if (message.isMine) {
-      chatContents = chatContents.reversed.toList();
-    }
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 18),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       child: Row(
         mainAxisAlignment:
-        message.isMine ? MainAxisAlignment.end : MainAxisAlignment.start,
-        children: chatContents,
+        isMine ? MainAxisAlignment.end : MainAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          if (!isMine)
+            CircleAvatar(
+              radius: 16,
+              child: profile == null
+                  ? preloader
+                  : Text(profile!.username.substring(0, 2)),
+            ),
+          if (!isMine) const SizedBox(width: 8),
+
+          /// Bubble
+          Flexible(
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: isMine
+                    ? Theme.of(context).primaryColor
+                    : Colors.grey.shade200,
+                borderRadius: BorderRadius.only(
+                  topLeft: const Radius.circular(12),
+                  topRight: const Radius.circular(12),
+                  bottomLeft:
+                  isMine ? const Radius.circular(12) : Radius.zero,
+                  bottomRight:
+                  isMine ? Radius.zero : const Radius.circular(12),
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    message.content,
+                    style: TextStyle(
+                      color: isMine ? Colors.white : Colors.black87,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        format(message.createdAt, locale: 'en_short'),
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: isMine ? Colors.white70 : Colors.black45,
+                        ),
+                      ),
+                      if (isMine) const SizedBox(width: 4),
+                      if (isMine)
+                        Icon(
+                          message.status == MessageStatus.pending
+                              ? Icons.access_time // Clock icon for pending
+                              : message.status == MessageStatus.sent
+                              ? Icons.check // Single check
+                              : Icons.done_all, // Delivered
+                          size: 14,
+                          color: message.status == MessageStatus.delivered
+                              ? Colors.white
+                              : Colors.white70,
+                        ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (isMine) const SizedBox(width: 8),
+        ],
       ),
     );
   }
+
+
+  //
+  // @override
+  // Widget build(BuildContext context) {
+  //   List<Widget> chatContents = [
+  //     if (!message.isMine)
+  //       CircleAvatar(
+  //         child: profile == null
+  //             ? preloader
+  //             : Text(profile!.username.substring(0, 2)),
+  //       ),
+  //     const SizedBox(width: 12),
+  //     Flexible(
+  //       child: Container(
+  //         padding: const EdgeInsets.symmetric(
+  //           vertical: 8,
+  //           horizontal: 12,
+  //         ),
+  //         decoration: BoxDecoration(
+  //           color: message.isMine
+  //               ? Theme.of(context).primaryColor
+  //               : Colors.grey[300],
+  //           borderRadius: BorderRadius.circular(8),
+  //         ),
+  //         child: Text(message.content),
+  //       ),
+  //     ),
+  //     const SizedBox(width: 12),
+  //     Text(format(message.createdAt, locale: 'en_short')),
+  //     //Text(message.createdAt.toString()),
+  //     const SizedBox(width: 60),
+  //
+  //     if (message.isMine)
+  //       Icon(
+  //         message.status == MessageStatus.pending
+  //             ? Icons.access_time // Clock icon for pending
+  //             : message.status == MessageStatus.sent
+  //             ? Icons.check // Single check for sent
+  //             : Icons.done_all, // Double check for delivered
+  //         size: 16,
+  //         color: message.status == MessageStatus.delivered
+  //             ? Colors.green // Green for delivered
+  //             : Colors.grey, // Grey for pending and sent
+  //       ),
+  //
+  //   ];
+  //   if (message.isMine) {
+  //     chatContents = chatContents.reversed.toList();
+  //   }
+  //   return Padding(
+  //     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 18),
+  //     child: Row(
+  //       mainAxisAlignment:
+  //       message.isMine ? MainAxisAlignment.end : MainAxisAlignment.start,
+  //       children: chatContents,
+  //     ),
+  //   );
+  // }
 }
