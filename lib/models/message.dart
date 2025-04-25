@@ -39,7 +39,7 @@ class Message {
     final statusString = row['status']; // Assuming status is stored as a string in the database
     final status = MessageStatus.values.firstWhere(
           (e) => e.toString() == 'MessageStatus.$statusString',
-      orElse: () => MessageStatus.sent, // Default to sent if status is invalid
+      orElse: () => MessageStatus.pending, // Default to sent if status is invalid
     );
     return Message(
       id: row['id'],
@@ -61,10 +61,10 @@ class Message {
     });
   }
 
-  static Future<void> create(String profileId, String content) async {
+  static Future<void> create(String profileId, String content,MessageStatus status,) async {
     await db.execute(
         'INSERT INTO messages(id, created_at, profile_id, content, status) VALUES(uuid(), datetime(), ?, ?, ?)',
-        [profileId, content, MessageStatus.sent.toString().split('.').last]); // Set default status to 'sent'
+        [profileId, content, status.toString().split('.').last]); // Set default status to 'sent'
   }
 
   // A method to update the message status (delivered)

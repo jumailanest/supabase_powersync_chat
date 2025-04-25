@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:timeago/timeago.dart';
@@ -39,6 +40,8 @@ class _ChatPageState extends State<ChatPage> {
   late final Stream<bool> _senderStatusStream; // Stream for sender's online status
   final Map<String, Profile> _profileCache = {};
 
+
+
   @override
   void initState() {
     final myUserId = supabase.auth.currentUser!.id;
@@ -57,6 +60,16 @@ class _ChatPageState extends State<ChatPage> {
     _trackUserPresence(myUserIdInt);
 
     super.initState();
+  }
+
+  Future<bool> _isOnline() async {
+    final connectivityResults = await Connectivity().checkConnectivity();
+    // Check if any result indicates an active network
+    return connectivityResults.any((result) =>
+    result == ConnectivityResult.wifi ||
+        result == ConnectivityResult.mobile ||
+        result == ConnectivityResult.ethernet ||
+        result == ConnectivityResult.vpn);
   }
 
 
@@ -258,6 +271,17 @@ class _MessageBarState extends State<_MessageBar> {
     super.dispose();
   }
 
+  Future<bool> _isOnline() async {
+    final connectivityResults = await Connectivity().checkConnectivity();
+    // Check if any result indicates an active network
+    return connectivityResults.any((result) =>
+    result == ConnectivityResult.wifi ||
+        result == ConnectivityResult.mobile ||
+        result == ConnectivityResult.ethernet ||
+        result == ConnectivityResult.vpn);
+  }
+
+
   void _submitMessage() async {
     final text = _textController.text;
     final myUserId = supabase.auth.currentUser!.id;
@@ -265,7 +289,16 @@ class _MessageBarState extends State<_MessageBar> {
       return;
     }
     _textController.clear();
-    await Message.create(myUserId, text);
+
+    final isOnline = await _isOnline();
+    print("isOnline...$isOnline");
+    final status = isOnline ? MessageStatus.sent : MessageStatus.pending;
+
+
+    // Create message with appropriate status
+    await Message.create(myUserId, text, status);
+
+    //await Message.create(myUserId, text);
   }
 }
 
@@ -277,6 +310,10 @@ class _ChatBubble extends StatelessWidget {
 
   final Message message;
   final Profile? profile;
+
+
+
+
 
   @override
   Widget build(BuildContext context) {
